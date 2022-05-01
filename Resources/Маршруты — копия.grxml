@@ -1,0 +1,74 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<grammar version="1.0" xml:lang="ru-RU" root="Маршруты"
+xmlns="http://www.w3.org/2001/06/grammar" tag-format="semantics-ms/1.0">
+
+  <rule id = "Маршруты" scope = "public">
+	  <one-of>
+      <item>проложи маршрут<tag> $.cmd = "route"</tag>
+        <item>от<ruleref uri="#Города"/><tag> $.from = $$</tag></item>
+ 		    <item>до <ruleref uri="#Города"/><tag> $.to = $$</tag></item>
+      </item>
+		</one-of>
+	</rule>
+  
+	<rule id="Города" scope="private">
+		<one-of>
+			<item>Москвы<tag> $ = "Москва"</tag></item>
+			<item>Питера<tag> $ = "Санкт-Петербург" </tag></item>
+			<item>Новгорода<tag> $ = "Новгород" </tag></item>
+			<item>Твери<tag> $ = "Тверь" </tag></item>
+		</one-of>
+	</rule>
+
+  <rule id = "тест" scope = "public">
+    <one-of>
+      <item>
+        Мику<tag> $.name = "Miku"</tag>
+        <item>
+          <ruleref uri="#действие"/><tag> $.action = $$</tag>
+            <item>
+              <ruleref uri="#что"/><tag> $.thing = $$</tag>
+              <item>
+                на осу
+              </item>
+            </item>
+        </item>
+      </item>
+    </one-of>
+  </rule>
+
+
+  <rule id="действие" scope="private">
+    <one-of>
+      <item>
+        открой<tag> $ = "открываю"</tag>
+      </item>
+      <item>
+        выключи<tag> $ = "выключаю" </tag>
+      </item>
+      <item>
+        покажи<tag> $ = "показываю" </tag>
+      </item>
+      <item>
+        смени<tag> $ = "меняю" </tag>
+      </item>
+    </one-of>
+  </rule>
+
+  <rule id="что" scope="private">
+    <one-of>
+      <item>
+        музыку<tag> $ = "https://www.youtube.com/playlist?list=PLd-myY-TJBJd3yv-CDwowV9TngjIE4ntL"</tag>
+      </item>
+      <item>
+        время<tag> $ = "12:30" </tag>
+      </item>
+      <item>
+        игру<tag> $ = "" </tag>
+      </item>
+    </one-of>
+  </rule>
+  
+    
+  
+</grammar>
