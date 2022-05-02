@@ -1,91 +1,74 @@
-﻿using System;
-using IrcDotNet;
-using System.Threading;
-using Microsoft.Speech.Recognition;
-using Microsoft.Speech.Synthesis;
-using System.Net;
-using Microsoft.Speech.Recognition.SrgsGrammar;
-using System.IO;
+﻿using IrcDotNet;
+using Newtonsoft.Json;
+using System.Speech.Synthesis; 
+using System.Speech.Recognition;
+using System.Text;
 
 namespace Miku
 {
     class Bot
     {
-
-        private static TwitchIrcClient ircClient;
-        private static String ChannelToConnect = "#yohelloyukinon";
+        private static readonly HttpClient client = new HttpClient();
+        private static TwitchIrcClient ircClient = new TwitchIrcClient
+        {
+            FloodPreventer = new IrcStandardFloodPreventer(10, 100)
+        };
         private static bool isRunning = true;
         private static SpeechSynthesizer ss = new SpeechSynthesizer();
-
-        static void Main(string[] args)
+        private static string[] info = File.ReadAllLines($"{Directory.GetCurrentDirectory()}/twitch.txt");
+        private static string host = info[0], channelToConnect = $"#{info[1]}", musicLink = info[4];
+        static async Task Main(string[] args)
         {
-            ss.Volume = 100;// от 0 до 100
-            ss.Rate = 0;//от -10 до 10
+            ss.Volume = 70; // от 0 до 100
+            ss.Rate = 0; //от -10 до 10
             ss.SetOutputToDefaultAudioDevice();
-
+            ss.SelectVoice("Microsoft Irina Desktop");
             Console.Title = "Miku";
             Console.SetWindowSize(120, 40);
             Console.SetBufferSize(120, 400);
-
             Connect();
             JoinChannel();
-            VoiceRecognition();
-            Run();
-
+            //VoiceRecognition();
+            await Run();
+        }
+        public static void Connect()
+        {
+            ircClient.Connected += ircClient_Connected;
+            ircClient.ConnectFailed += ircClient_ConnectFailed;
+            ircClient.Disconnected += ircClient_Disconnected;
+            ircClient.Registered += ircClient_Registered;
+            ircClient.RawMessageReceived += ircClient_RawMessageReceived;
+            ircClient.RawMessageSent += ircClient_RawMessageSent;
+            IrcRegistrationInfo iri = new IrcUserRegistrationInfo()
+            {
+                UserName = info[1],
+                NickName = info[2],
+                Password = info[3]
+            };
+            ircClient.Connect("irc.twitch.tv", 6667, false, iri);
+            Thread.Sleep(3000);
         }
 
-
-
-        private static void Run()
+        private static void JoinChannel()
         {
-            // Read commands from stdin until bot terminates.
+            ircClient.Channels.Join(channelToConnect);
+            Thread.Sleep(2000);
+        }
+        private static async Task Run()
+        {
             while (isRunning)
             {
-                string s = Console.ReadLine();
-                if (s.Length == 0)
-                    continue;
-                switch (s)
+                string command = Console.ReadLine() ?? "";
+                switch (command)
                 {
-                    case "!end":
-                        ircClient.SendRawMessage("CAP END");
-                        break;
-                    case "!tags":
-                        ircClient.SendRawMessage("CAP REQ :twitch.tv/tags");
-                        break;
-                    case "!list":
-                        ircClient.SendRawMessage("CAP LIST");
-                        break;
-                    case "!n":
-                        ircClient.SendRawMessage("NAMES #yohelloyukinon");
-                        break;
-                    case "!j":
-                        ircClient.SendRawMessage("JOIN #lirik");
-                        break;
                     case "!c":
-                        System.Collections.Generic.IEnumerable<IrcUser> icu = ircClient.Users;
-                        Console.WriteLine("Пользователей в чате: " + ircClient.Users.Count + "\nСписок:");
-                        foreach (IrcUser i in icu)
-                        {
-                            Console.Write(i.NickName + " " + i.AwayMessage);
-                        }
-                        Console.WriteLine();
+                        GetChatters();
                         break;
                     case "!w":
-                        string json = "";
-                        using (WebClient wc = new WebClient())
-                        {
-                            json = wc.DownloadString("https://tmi.twitch.tv/group/user/yohelloyukinon/chatters");
-                        }
-                        string chatters = "chatter_count";
-                        int startIndex = json.IndexOf(chatters) + chatters.Length + 3;
-                        int endIndex = json.IndexOf(",", startIndex);
-                        int length = endIndex - startIndex;
-                        string count = json.Substring(startIndex, length);
-                        Console.WriteLine(count);
-                        break;
-                    case "!u":
-                        Console.WriteLine("!!!!!" + ircClient.Channels[0].Users.Count);
-                        //Console.WriteLine("ID: " + ircClient.Channels[0].Users[1].);
+                        string json = await client.GetStringAsync($"https://tmi.twitch.tv/group/user/{ircClient.LocalUser.UserName}/chatters");
+                        dynamic? data = JsonConvert.DeserializeObject(json);
+                        Console.WriteLine($"Пользователей в чате: {data?.chatter_count ?? -1}");
+                        Console.WriteLine(String.Join(", ", ircClient.Users));
                         break;
                     case "!e":
                         Stop();
@@ -93,54 +76,7 @@ namespace Miku
                     default:
                         break;
                 }
-            
             } 
-        }
-
-       
-        public static void Connect()
-        {
-            ircClient = new TwitchIrcClient
-            {
-                FloodPreventer = new IrcStandardFloodPreventer(10, 100)
-            };
-
-            // register events
-            ircClient.Connected += ircClient_Connected;
-            ircClient.ConnectFailed += ircClient_ConnectFailed;
-            ircClient.Disconnected += ircClient_Disconnected;
-            ircClient.Registered += ircClient_Registered;
-            ircClient.RawMessageReceived += ircClient_RawMessageReceived;
-            ircClient.RawMessageSent += ircClient_RawMessageSent;
-            
-            //ircClient.Channel.MessageReceived += ircClient_Channel_MessageReceived;
-            
-
-            IrcRegistrationInfo iri = new IrcUserRegistrationInfo()
-            {
-                UserName = "yohelloyukinon",
-                NickName = "yohelloyukinon",
-                Password = "oauth:62gpjlwlyripeq5ssyybsz3o7g0n8x"
-            };
-
-            ircClient.Connect("irc.chat.twitch.tv", 6667, false, iri);
-            Thread.Sleep(1000);
-            
-        }
-
-        private static void JoinChannel()
-        {
-            ircClient.SendRawMessage("CAP REQ :twitch.tv/membership");
-            //Thread.Sleep(1000);
-            //ircClient.SendRawMessage("CAP REQ :twitch.tv/tags");
-            
-            Thread.Sleep(1000);
-            ircClient.Channels.Join(ChannelToConnect);
-            //Thread.Sleep(1000);
-            
-
-            //ircClient.LocalUser.JoinedChannel+= ircClient_UsersListReceived;
-            //ircClient.ChannelListReceived += ircClient_ChannelUserCount;
         }
 
         private static void Stop()
@@ -153,24 +89,31 @@ namespace Miku
                 ircClient.Quit();
                 ircClient.Dispose();
             }
-            Console.Out.WriteLine("Disconnected from '{0}'.", serverName);
+            Console.Out.WriteLine($"Отключено от {serverName}.");
             isRunning = false;
             Console.Beep();
         }
 
+        private static void SendMessage(string message)
+        {
+            if (ircClient != null)
+            {
+                ircClient.LocalUser.SendMessage(channelToConnect, message);
+            }
+        }
+
+        private static void GetChatters()
+        {
+            Console.WriteLine($"Пользователей в чате: {ircClient.Users.Count}");
+            Console.WriteLine(String.Join(", ", ircClient.Users));
+        }
+
         private static void VoiceRecognition()
-        {/*
-            SpeechSynthesizer ss = new SpeechSynthesizer();
-            ss.Volume = 100;// от 0 до 100
-            ss.Rate = 0;//от -10 до 10
-            ss.SetOutputToDefaultAudioDevice();
-
-            //ss.SelectVoice("Microsoft Server Speech Text to Speech Voice (ja-JP, Haruka)");
-            ss.SpeakAsync("дай модерку айди 1 5 6 4 9 8 3");
-
+        {
+            /*
             SpeechRecognitionEngine sr = new SpeechRecognitionEngine();
             sr.SetInputToDefaultAudioDevice();//микрофон
-            */
+            
             GrammarBuilder grammarBuilder = new GrammarBuilder();
             grammarBuilder.Append(new Choices("мику, покажи время", "мику, выход", "дай модерку айди 1 5 6 4 9 8 3"));//добавляем используемые фразы
             Grammar gr1 = new Grammar(grammarBuilder);
@@ -194,30 +137,13 @@ namespace Miku
 
             sr.SpeechRecognized += new EventHandler<SpeechRecognizedEventArgs>(SpeechRecognized);//событие речь распознана
             sr.RecognizeAsync(RecognizeMode.Multiple);//начинаем распознование
+            */
         }
-
-        
-
-
-        
-
-        private static void SendMessage(string message)
-        {
-            if (ircClient != null)
-            {
-                ircClient.LocalUser.SendMessage(ChannelToConnect, message);
-                //ircClient.SendRawMessage(message);
-            }
-        }
-
-
-
 
         #region events
-
         private static void SpeechRecognized(object sender, SpeechRecognizedEventArgs e)
         {
-            
+            /*
             Console.WriteLine("Recognized phrase: " + e.Result.Text);
             ss.SpeakAsync(e.Result.Text);
 
@@ -252,198 +178,123 @@ namespace Miku
             //Console.WriteLine($"Маршрут от точки А: {pointA} до точки Б: {pointB}");
             SendMessage(cmdName + " " + thing + " " + preposition + " " + game);
             string json = "body: { channel: { status, Battlefield 3 } }";
-            using (WebClient wc = new WebClient())
-            {
-                
-                wc.Headers.Set(System.Net.HttpRequestHeader.Accept, "application/vnd.twitchtv.v5+json");
-                wc.Headers.Set(System.Net.HttpRequestHeader.ContentType, "application/json");
-                wc.Headers.Set(System.Net.HttpRequestHeader.Authorization, "OAuth 62gpjlwlyripeq5ssyybsz3o7g0n8x");//, Client-ID:e3qp2yazpapigqfm29ydrk6q2ef40h");
-                wc.UploadString("https://api.twitch.tv/api/channels/yohelloyukinon/access_token?client_id=e3qp2yazpapigqfm29ydrk6q2ef40h", "PUT", json); //98331196
-
-                //var request = (HttpWebRequest)WebRequest.Create("https://api.twitch.tv/kraken/channels/");
-                //request.bod
-
-            }
-
-            }
-
-        private static void ircClient_Connected(object sender, EventArgs e)
-        {
-            if (e != null)
-                Console.WriteLine("Connected.");
+            */
         }
 
-        private static void ircClient_ConnectFailed(object sender, IrcErrorEventArgs e)
+        private static void ircClient_Connected(object? sender, EventArgs e)
         {
-            if (e != null)
-                Console.WriteLine("Connect failed: " + e.Error.Message);
+            Console.WriteLine("[Событие]Connected> Подключено");
         }
 
-        private static void ircClient_Disconnected(object sender, EventArgs e)
+        private static void ircClient_ConnectFailed(object? sender, IrcErrorEventArgs e)
         {
-            Console.WriteLine("Disconnected.");
+            Console.WriteLine($"[Событие]ConnectFailed> Подключение не удалось: {e?.Error.Message}");
         }
 
-        private static void ircClient_RawMessageReceived(object sender, IrcRawMessageEventArgs e)
+        private static void ircClient_Disconnected(object? sender, EventArgs e)
+        {
+            Console.WriteLine("[Событие]Disconnected> Отключено.");
+        }
+
+        private static void ircClient_RawMessageReceived(object? sender, IrcRawMessageEventArgs e)
         { 
-            if (e != null)
-            {
-               Console.WriteLine(e.RawContent);
-                if (e.RawContent.Contains("user-id"))
-                {
-                    //Console.WriteLine("user-id: ----------------------------------------");
-                    //ircClient.SendRawMessage("CAP LIST :twitch.tv/tags");
-                }
-            }
+            //Console.WriteLine($"[Событие]RawMessageReceived> Сырой вид: {e.RawContent}");
         }
-
 
         // NOT triggered
-        private static void ircClient_LocalUser_MessageReceived(object sender, IrcMessageEventArgs e)
+        private static void ircClient_LocalUser_MessageReceived(object? sender, IrcMessageEventArgs e)
         {
-            var localUser = (IrcLocalUser)sender;
-
-            if (e.Source is IrcUser)
-            {
-                // Read message.
-                Console.WriteLine("({0}): {1}", e.Source.Name, e.Text);
-            }
-            else
-            {
-                Console.WriteLine("({0}) Message: {1}", e.Source.Name, e.Text);
-            }
-            //Console.WriteLine("local user message received" + e.Text);
+            Console.WriteLine($"[Событие]LocalUser_MessageReceived> {e.Source.Name}: {e.Text}");
         }
-
         //triggered
-        private static void ircClient_Channel_MessageReceived(object sender, IrcMessageEventArgs e)
+        private static void ircClient_Channel_MessageReceived(object? sender, IrcMessageEventArgs e)
         {
-            var channel = (IrcChannel)sender;
-            if (e.Source is IrcUser)
-            {
-                // Read message.
-                Console.WriteLine("[{0}]({1}): {2}", channel.Name, e.Source.Name, e.Text);
-            }
-            else
-            {
-                Console.WriteLine("[{0}]({1}) Message: {2}", channel.Name, e.Source.Name, e.Text);
-            }
-
-
+            Console.WriteLine($"[Событие]Channel_MessageReceived> {e.Source.Name}: {e.Text}");
             if(e != null)
-                {
+            {
                 if (e.Text.Contains("!tog"))
                     SendMessage("http://www.webtoons.com/en/fantasy/tower-of-god/list?title_no=95");
 
                 if (e.Text.Contains("!music"))
-                    SendMessage("https://www.youtube.com/playlist?list=PLd-myY-TJBJd3yv-CDwowV9TngjIE4ntL");
+                    SendMessage(musicLink);
 
                 if (e.Text.Contains("!ll"))
                 {
-                    SendMessage("/me L\\n");
+                    SendMessage("/me L");
                     SendMessage("/me O");
                     SendMessage("/me V");
                     SendMessage("/me E");
-                    SendMessage("/me \u2063 \\n");
                     SendMessage("/me L");
                     SendMessage("/me I");
                     SendMessage("/me V");
                     SendMessage("/me E");
                     SendMessage("/me !");
                 }
+                if (e.Source.Name != info[1])
+                {
+                    ss.SpeakAsync(e.Text);
+                }
+                var data = new Dictionary<string, string>
+                {
+                    { "u", e.Source.Name },
+                    { "m", e.Text }
+                };
+                var jsonData = JsonConvert.SerializeObject(data);
+                var contentData = new StringContent(jsonData, Encoding.UTF8, "application/json");
+                client.PostAsync($"{host}/chat", contentData);
             }
-            /*
-            System.Collections.Generic.IEnumerable<IrcUser> icu = ircClient.Users;
-            int count = ircClient.Users.Count;
-            
-            Console.WriteLine("Пользователей в чате: " + count + "\nСписок:");
-            foreach (IrcUser i in icu)
-            {
-                Console.Write(i.NickName + " "+ i.ServerName);
-            }
-            Console.WriteLine();
-            */
         }
 
         // NOT triggered
-        private static void ircClientLocalUser_MessageSent(object sender, IrcMessageEventArgs e)
+        private static void ircClient_LocalUser_MessageSent(object? sender, IrcMessageEventArgs e)
         {
-            Console.WriteLine("local user message sent" + e.Text);
+            Console.WriteLine($"[Событие]LocalUser_MessageSent> {e.Text}");
         }
 
         //triggered
-        private static void ircClient_RawMessageSent(object sender, IrcRawMessageEventArgs e)
+        private static void ircClient_RawMessageSent(object? sender, IrcRawMessageEventArgs e)
         {
-
-            //Console.WriteLine("raw message sent: " + e.RawContent.ToString());
-            
+            //Console.WriteLine($"[Событие]RawMessageSent> Сырой вид: {e.RawContent}");
         }
 
         //triggered
-        private static void ircClient_Registered(object sender, EventArgs e)
+        private static void ircClient_Registered(object? sender, EventArgs e)
         {
-            Console.WriteLine("Registered.");
-
-
+            Console.WriteLine("[Событие]Registered> Зарегистрирован.");
+            Console.WriteLine($"Никнейм локального пользователя: {ircClient.LocalUser.NickName}");
             ircClient.LocalUser.MessageReceived += ircClient_LocalUser_MessageReceived;
-            ircClient.LocalUser.MessageSent += ircClientLocalUser_MessageSent;
+            ircClient.LocalUser.MessageSent += ircClient_LocalUser_MessageSent;
             ircClient.LocalUser.JoinedChannel += ircClient_LocalUser_JoinedChannel;
-            Console.WriteLine("Nickname: " + ircClient.LocalUser.NickName);
-
             ircClient.LocalUser.NoticeReceived += ircClient_LocalUser_NoticeReceived;
             ircClient.LocalUser.LeftChannel += IrcClient_LocalUser_LeftChannel;
         }
 
         //triggered
-        private static void ircClient_LocalUser_JoinedChannel(object sender, IrcChannelEventArgs e)
+        private static void ircClient_LocalUser_JoinedChannel(object? sender, IrcChannelEventArgs e)
         {
-            var localUser = (IrcLocalUser)sender;
-
-            //e.Channel.UserJoined += IrcClient_Channel_UserJoined;
-            //e.Channel.UserLeft += IrcClient_Channel_UserLeft;
+            Console.WriteLine($"[Событие]LocalUser_JoinedChannel> {e.Channel}");
+            Console.WriteLine($"Вы присоединились к каналу {e.Channel.Name}.");
+            GetChatters();
             e.Channel.MessageReceived += ircClient_Channel_MessageReceived;
             e.Channel.NoticeReceived += IrcClient_Channel_NoticeReceived;
             e.Channel.UsersListReceived += ircClient_UsersListReceived;
-
-            Console.WriteLine("You joined the channel {0}.", e.Channel.Name);
-
-            System.Collections.Generic.IEnumerable<IrcUser> icu = ircClient.Users;
-            int count = ircClient.Users.Count;
-            Console.WriteLine("Пользователей в чате: " + count + "\nСписок:");
-            foreach (IrcUser i in icu)
-            {
-                Console.Write(i.NickName + " ");
-            }
         }
-
-
-            
-
-        private static void ircClient_UsersListReceived(object sender, EventArgs e)
+        private static void ircClient_UsersListReceived(object? sender, EventArgs e)
         {
-            //var localUser = (IrcLocalUser)sender;
-
-            //Console.WriteLine("list received" );
-            //Console.WriteLine("id of moobot:" + ircClient.Users[0].ServerName);
-            //Console.WriteLine("!!!!!" + ircClient.Channels[1].Users.Count);
+            Console.WriteLine($"[Событие]UsersListReceived> {e}");
         }
-
-
-        private static void IrcClient_Channel_NoticeReceived(object sender, IrcMessageEventArgs e)
+        private static void IrcClient_Channel_NoticeReceived(object? sender, IrcMessageEventArgs e)
         {
-            Console.WriteLine("Notice: " + e.Text);
+            Console.WriteLine($"[Событие]]Channel_NoticeReceived> {e.Text}");
         }
-
-        private static void IrcClient_LocalUser_LeftChannel(object sender, IrcChannelEventArgs e)
+        private static void IrcClient_LocalUser_LeftChannel(object? sender, IrcChannelEventArgs e)
         {
-
+            Console.WriteLine($"[Событие]LocalUser_LeftChannel> {e.Channel}");
         }
-
-        private static void ircClient_LocalUser_NoticeReceived(object sender, IrcMessageEventArgs e)
+        private static void ircClient_LocalUser_NoticeReceived(object? sender, IrcMessageEventArgs e)
         {
-            Console.WriteLine("Local user Notice: " + e.Text);
+            Console.WriteLine($"[Событие]LocalUser_NoticeReceived> {e.Text}");
         }
-        
         #endregion
     }
 }
